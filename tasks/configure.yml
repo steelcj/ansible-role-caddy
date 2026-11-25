@@ -1,0 +1,110 @@
+---
+- name: Inspect the package-provided service
+  ansible.builtin.systemd_service:
+    name: "{{ caddy_service }}"
+    daemon_reload: false
+  register: caddy_service_before
+
+- name: Inspect the alternative API service
+  ansible.builtin.systemd_service:
+    name: caddy-api.service
+    daemon_reload: false
+  register: caddy_api_service
+
+- name: Refuse competing service units and unexpected service accounts
+  ansible.builtin.assert:
+    that:
+      - caddy_api_service.status.ActiveState | default('inactive') not in ['active', 'activating', 'reloading']
+      - caddy_api_service.status.UnitFileState | default('disabled') not in ['enabled', 'enabled-runtime']
+      - caddy_service_before.status.User | default('') == caddy_user
+      - caddy_service_before.status.Group | default('') in ['', caddy_group]
+    fail_msg: "The package-managed Caddyfile service must use the caddy account; disable the competing API unit before proceeding."
+    quiet: true
+
+- name: Inspect the configuration paths without following symbolic links
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    follow: false
+  loop:
+    - "{{ caddy_config_dir }}"
+    - "{{ caddy_config_dir }}/snippets"
+    - "{{ caddy_config_dir }}/sites.d"
+  register: caddy_config_paths
+
+- name: Refuse non-directory configuration paths
+  ansible.builtin.assert:
+    that:
+      - not item.stat.exists or (item.stat.isdir and not item.stat.islnk)
+    quiet: true
+  loop: "{{ caddy_config_paths.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Establish read-only configuration directories for the service account
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: "{{ caddy_group }}"
+    mode: "0750"
+  loop:
+    - "{{ caddy_config_dir }}"
+    - "{{ caddy_config_dir }}/snippets"
+    - "{{ caddy_config_dir }}/sites.d"
+
+- name: Restrict access to the package-provided persistent state directory
+  ansible.builtin.file:
+    path: "{{ caddy_home }}"
+    state: directory
+    owner: "{{ caddy_user }}"
+    group: "{{ caddy_group }}"
+    mode: "0700"
+
+- name: Inspect the existing global configuration
+  ansible.builtin.stat:
+    path: "{{ caddy_config_file }}"
+    follow: false
+  register: caddy_previous_stat
+
+- name: Refuse to replace a symbolic link or special configuration file
+  ansible.builtin.assert:
+    that:
+      - not caddy_previous_stat.stat.exists or (caddy_previous_stat.stat.isreg and not caddy_previous_stat.stat.islnk)
+    quiet: true
+
+- name: Read the previous global configuration for comparison and recovery
+  ansible.builtin.slurp:
+    src: "{{ caddy_config_file }}"
+  register: caddy_previous
+  when: caddy_previous_stat.stat.exists
+  no_log: true
+
+- name: Render the desired global configuration
+  ansible.builtin.set_fact:
+    caddy_desired_config: "{{ lookup('ansible.builtin.template', 'Caddyfile.j2') }}"
+  no_log: true
+
+- name: Stage and activate a changed global configuration
+  ansible.builtin.include_tasks: activate.yml
+  when: >-
+    not caddy_previous_stat.stat.exists or
+    caddy_previous.content | b64decode != caddy_desired_config
+
+- name: Enforce read-only access to the global configuration
+  ansible.builtin.file:
+    path: "{{ caddy_config_file }}"
+    state: file
+    owner: root
+    group: "{{ caddy_group }}"
+    mode: "0640"
+
+- name: Validate the installed configuration as the service account
+  ansible.builtin.command:
+    argv: "{{ caddy_validate_command + [caddy_config_file, '--adapter', 'caddyfile'] }}"
+  changed_when: false
+
+- name: Ensure Caddy is running and enabled
+  ansible.builtin.systemd_service:
+    name: "{{ caddy_service }}"
+    state: started
+    enabled: true

@@ -1,0 +1,22 @@
+---
+caddy_package: caddy
+caddy_service: caddy.service
+caddy_binary: /usr/bin/caddy
+caddy_config_dir: /etc/caddy
+caddy_config_file: /etc/caddy/Caddyfile
+caddy_user: caddy
+caddy_group: caddy
+caddy_home: /var/lib/caddy
+
+# Match the Debian service account's standard HOME. Custom unit environment
+# overrides are outside this release's supported configuration.
+caddy_validate_command:
+  - /usr/sbin/runuser
+  - -u
+  - "{{ caddy_user }}"
+  - --
+  - /usr/bin/env
+  - "HOME={{ caddy_home }}"
+  - "{{ caddy_binary }}"
+  - validate
+  - --config

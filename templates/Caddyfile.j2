@@ -1,0 +1,9 @@
+# Managed by Ansible (steelcj.caddy). Site definitions belong in sites.d/.
+{
+    admin localhost:2019
+{% if caddy_email | length > 0 %}
+    email {{ caddy_email }}
+{% endif %}
+}
+
+import /etc/caddy/sites.d/*.caddy

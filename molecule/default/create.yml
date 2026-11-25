@@ -1,0 +1,70 @@
+---
+- name: Create
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: List local Incus instances in the default project
+      ansible.builtin.command:
+        argv: [incus, list, 'local:', --project, default, --format, csv, -c, n]
+      register: create_instances
+      changed_when: false
+
+    - name: Launch the disposable test containers
+      ansible.builtin.command:
+        argv:
+          - incus
+          - launch
+          - "{{ item.image }}"
+          - "local:{{ item.name }}"
+          - --project
+          - default
+          - --config
+          - user.molecule.role=steelcj.caddy
+      loop: "{{ molecule_yml.platforms }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: item.name not in create_instances.stdout_lines
+      changed_when: true
+
+    - name: Read the ownership marker before using each container
+      ansible.builtin.command:
+        argv: [incus, config, get, 'local:{{ item.name }}', user.molecule.role, --project, default]
+      loop: "{{ molecule_yml.platforms }}"
+      register: create_markers
+      changed_when: false
+
+    - name: Refuse to use an unrelated container
+      ansible.builtin.assert:
+        that: item.stdout | trim == 'steelcj.caddy'
+        fail_msg: "Container {{ item.item.name }} already exists and is not marked as this scenario's disposable instance."
+      loop: "{{ create_markers.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+
+    - name: Wait for systemd in the containers
+      ansible.builtin.command:
+        argv: [incus, exec, 'local:{{ item.name }}', --project, default, --, systemctl, is-system-running, --wait]
+      loop: "{{ molecule_yml.platforms }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: create_wait
+      changed_when: false
+      failed_when: false
+      until: create_wait.stdout | default('') in ['running', 'degraded']
+      retries: 30
+      delay: 2
+
+    - name: Write the instance config
+      ansible.builtin.copy:
+        content: "{{ create_instance_config | from_yaml | to_nice_yaml }}"
+        dest: "{{ molecule_instance_config }}"
+        mode: "0600"
+      vars:
+        create_instance_config: |
+          {% for platform in molecule_yml.platforms %}
+          - instance: "{{ platform.name }}"
+            address: "{{ platform.name }}"
+            user: root
+            connection: community.general.incus
+          {% endfor %}

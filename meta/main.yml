@@ -1,0 +1,20 @@
+---
+galaxy_info:
+  namespace: steelcj
+  role_name: caddy
+  author: Christopher Steel
+  description: Establish a package-managed Caddy service foundation for independent websites.
+  license: Apache-2.0
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Debian
+      versions:
+        - trixie
+  galaxy_tags:
+    - caddy
+    - webserver
+    - https
+    - security
+    - multisite
+
+dependencies: []

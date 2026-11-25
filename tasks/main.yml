@@ -1,0 +1,19 @@
+---
+- name: Check role prerequisites
+  ansible.builtin.import_tasks: assert.yml
+
+- name: Install Caddy from the host's authenticated APT repositories
+  ansible.builtin.apt:
+    name: "{{ caddy_package ~ ('=' ~ caddy_package_version if caddy_package_version | length > 0 else '') }}"
+    state: present
+    update_cache: true
+    cache_valid_time: "{{ caddy_apt_cache_valid_time }}"
+    allow_unauthenticated: false
+    install_recommends: false
+    policy_rc_d: 101
+
+# No configuration or service operations can be simulated reliably before
+# the package and its service account exist. See README for check mode.
+- name: Configure the installed Caddy service
+  ansible.builtin.import_tasks: configure.yml
+  when: not ansible_check_mode

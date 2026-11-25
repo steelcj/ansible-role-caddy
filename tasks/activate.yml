@@ -1,0 +1,92 @@
+---
+# Stage beside the real Caddyfile so relative imports resolve identically.
+- name: Allocate a temporary candidate file
+  ansible.builtin.tempfile:
+    state: file
+    path: "{{ caddy_config_dir }}"
+    prefix: .Caddyfile-ansible-
+  register: caddy_stage
+  changed_when: false
+
+- name: Validate and activate the candidate configuration
+  block:
+    - name: Write the candidate with service-readable permissions
+      ansible.builtin.copy:
+        content: "{{ caddy_desired_config }}"
+        dest: "{{ caddy_stage.path }}"
+        owner: root
+        group: "{{ caddy_group }}"
+        mode: "0640"
+      changed_when: false
+      no_log: true
+
+    - name: Validate the candidate before changing the active file
+      ansible.builtin.command:
+        argv: "{{ caddy_validate_command + [caddy_stage.path, '--adapter', 'caddyfile'] }}"
+      changed_when: false
+
+    - name: Commit and activate the validated candidate
+      block:
+        - name: Atomically replace the global Caddyfile
+          ansible.builtin.copy:
+            src: "{{ caddy_stage.path }}"
+            remote_src: true
+            dest: "{{ caddy_config_file }}"
+            owner: root
+            group: "{{ caddy_group }}"
+            mode: "0640"
+
+        # Synchronous reload rather than a deferred handler: a failed reload
+        # must be caught inside this transaction before the play continues.
+        - name: Gracefully reload the running service
+          ansible.builtin.systemd_service:
+            name: "{{ caddy_service }}"
+            state: reloaded
+          when: caddy_service_before.status.ActiveState == 'active'
+
+        - name: Start the service if it was not running
+          ansible.builtin.systemd_service:
+            name: "{{ caddy_service }}"
+            state: started
+          when: caddy_service_before.status.ActiveState != 'active'
+
+      rescue:
+        - name: Restore the previous global configuration
+          ansible.builtin.copy:
+            content: "{{ caddy_previous.content | b64decode }}"
+            dest: "{{ caddy_config_file }}"
+            owner: "{{ caddy_previous_stat.stat.uid }}"
+            group: "{{ caddy_previous_stat.stat.gid }}"
+            mode: "{{ caddy_previous_stat.stat.mode }}"
+          when: caddy_previous_stat.stat.exists
+          no_log: true
+
+        - name: Remove the new file if no previous configuration existed
+          ansible.builtin.file:
+            path: "{{ caddy_config_file }}"
+            state: absent
+          when: not caddy_previous_stat.stat.exists
+
+        - name: Reapply the previous configuration to a previously active service
+          ansible.builtin.systemd_service:
+            name: "{{ caddy_service }}"
+            state: reloaded
+          when:
+            - caddy_previous_stat.stat.exists
+            - caddy_service_before.status.ActiveState == 'active'
+
+        - name: Stop a service that was not previously active
+          ansible.builtin.systemd_service:
+            name: "{{ caddy_service }}"
+            state: stopped
+          when: caddy_service_before.status.ActiveState != 'active'
+
+        - name: Report the failed configuration transaction
+          ansible.builtin.fail:
+            msg: "Caddy activation failed. The previous Caddyfile was restored (or the new file removed). Inspect journalctl -u caddy."
+  always:
+    - name: Remove the temporary candidate
+      ansible.builtin.file:
+        path: "{{ caddy_stage.path }}"
+        state: absent
+      changed_when: false

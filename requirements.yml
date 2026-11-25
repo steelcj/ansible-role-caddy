@@ -1,0 +1,4 @@
+---
+# The role itself needs no collections. Test dependencies are in
+# molecule/default/requirements.yml.
+collections: []

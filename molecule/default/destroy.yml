@@ -1,0 +1,41 @@
+---
+- name: Destroy
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: List local Incus instances in the default project
+      ansible.builtin.command:
+        argv: [incus, list, 'local:', --project, default, --format, csv, -c, n]
+      register: destroy_instances
+      changed_when: false
+
+    - name: Read ownership markers of existing containers
+      ansible.builtin.command:
+        argv: [incus, config, get, 'local:{{ item.name }}', user.molecule.role, --project, default]
+      loop: "{{ molecule_yml.platforms }}"
+      when: item.name in destroy_instances.stdout_lines
+      register: destroy_markers
+      changed_when: false
+
+    - name: Refuse to delete a container not owned by this scenario
+      ansible.builtin.assert:
+        that: item.stdout | trim == 'steelcj.caddy'
+        fail_msg: "Refusing to delete unrelated container {{ item.item.name }}."
+      loop: "{{ destroy_markers.results }}"
+      when: not item.skipped | default(false)
+      loop_control:
+        label: "{{ item.item.name }}"
+
+    - name: Delete the disposable test containers
+      ansible.builtin.command:
+        argv: [incus, delete, 'local:{{ item.name }}', --force, --project, default]
+      loop: "{{ molecule_yml.platforms }}"
+      when: item.name in destroy_instances.stdout_lines
+      changed_when: true
+
+    - name: Empty the instance config
+      ansible.builtin.copy:
+        content: "{{ [] | to_yaml }}"
+        dest: "{{ molecule_instance_config }}"
+        mode: "0600"

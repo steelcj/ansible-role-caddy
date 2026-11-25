@@ -1,0 +1,11 @@
+---
+# Leave empty to use Caddy's default ACME account behaviour.
+# Set a real contact address in inventory for public certificate issuance.
+caddy_email: ""
+
+# An optional exact Debian package version, e.g. from apt-cache policy caddy.
+# Empty installs the candidate from the host's already trusted APT sources.
+caddy_package_version: ""
+
+# Refresh authenticated APT metadata if older than this many seconds.
+caddy_apt_cache_valid_time: 3600

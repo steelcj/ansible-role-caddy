@@ -1,0 +1,7 @@
+---
+# Available to callers that separately validate changes to site fragments.
+# The foundation role itself reloads synchronously inside its transaction.
+- name: Reload caddy
+  ansible.builtin.systemd_service:
+    name: "{{ caddy_service }}"
+    state: reloaded

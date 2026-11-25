@@ -1,0 +1,40 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  gather_facts: true
+  roles:
+    # Molecule's project-directory path allows an unpacked tarball to run
+    # directly, independently of any installed steelcj.caddy role.
+    - role: "{{ lookup('ansible.builtin.env', 'MOLECULE_PROJECT_DIRECTORY') }}"
+      caddy_email: admin@example.org
+
+  tasks:
+    - name: Create independent test site fragments
+      ansible.builtin.copy:
+        dest: "/etc/caddy/sites.d/{{ item.name }}.caddy"
+        owner: root
+        group: caddy
+        mode: "0640"
+        content: |
+          http://{{ item.name }}:8080 {
+              bind 127.0.0.1
+              respond "{{ item.body }}" 200
+          }
+      loop:
+        - name: first.example.test
+          body: first site
+        - name: second.example.test
+          body: second site
+      register: converge_sites
+
+    - name: Validate the combined configuration before activating test sites
+      ansible.builtin.command:
+        argv: [/usr/sbin/runuser, -u, caddy, --, /usr/bin/env, HOME=/var/lib/caddy, /usr/bin/caddy, validate, --config, /etc/caddy/Caddyfile, --adapter, caddyfile]
+      changed_when: false
+
+    - name: Reload only when test site definitions change
+      ansible.builtin.systemd_service:
+        name: caddy.service
+        state: reloaded
+      when: converge_sites is changed

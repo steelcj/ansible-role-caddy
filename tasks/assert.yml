@@ -1,0 +1,21 @@
+---
+- name: Require the reference platform and systemd
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['distribution'] == 'Debian'
+      - ansible_facts['distribution_major_version'] == '13'
+      - ansible_facts['service_mgr'] == 'systemd'
+    fail_msg: "This development release targets Debian 13 with systemd only."
+    quiet: true
+
+- name: Validate role inputs
+  ansible.builtin.assert:
+    that:
+      - caddy_email is string
+      - caddy_email == '' or caddy_email is match('^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,63}$')
+      - caddy_package_version is string
+      - caddy_package_version == '' or caddy_package_version is match('^[0-9][A-Za-z0-9.+:~\-]*$')
+      - caddy_apt_cache_valid_time is integer
+      - caddy_apt_cache_valid_time >= 0
+    fail_msg: "Invalid Caddy email, package version or APT cache lifetime."
+    quiet: true
