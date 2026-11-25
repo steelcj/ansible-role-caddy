@@ -1,4 +1,5 @@
 .venv/
+dist/
 .cache/
 .molecule/
 __pycache__/

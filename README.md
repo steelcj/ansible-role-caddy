@@ -70,6 +70,14 @@ An existing global Caddyfile is replaced by the role. Migrate inline sites into 
 
 The scenario follows `ansible-role-foomuuri`: Molecule's built-in default driver runs local Incus commands, and `community.general.incus` supplies Ansible connectivity without SSH. It creates an unprivileged Debian 13 system container using `images:debian/13`, bootstraps Python and sudo, converges twice, verifies, and destroys. No privileged mode or Docker is required. The fixed test container name `caddy-molecule-debian13` is reserved for this scenario; a marker guards against accidental deletion of unrelated instances. Do not run two scenarios concurrently under the same name. The local Incus project is `default`.
 
+Activate Python venv if you are using one
+
+```bash
+source ~/.venvs/ansible/current/bin/activate
+```
+
+Setup and run you molecule tests
+
 ```sh
 incus list local:
 incus image list images: debian/13 --format table
