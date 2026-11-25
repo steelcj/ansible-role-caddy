@@ -7,6 +7,7 @@ Write entries in the Unreleased section below as work happens. `scripts/cut-rele
 ## [Unreleased]
 
 * Created repository
+* Created version 0.1.0
 
 ## 0.1.0 - 2026-11-25
 
